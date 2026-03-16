@@ -1,0 +1,121 @@
+---
+title: "Somerville Happiness Survey – Final Exam Appendix"
+output: html_notebook
+---
+
+This R Notebook provides the data preparation, model fitting, and diagnostic output for the Somerville Happiness Survey analyses described in the written report. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+##### Analysis 1: (Multiple Linear Regression)
+```{r}
+happiness <- read.csv("/Users/beatrizmorales/Downloads/happinessSurvey.csv", stringsAsFactors = TRUE)
+head(happiness)
+str(happiness)
+summary(happiness)
+```
+
+```{r}
+happiness$overall_happiness    <- happiness$HappyNow
+happiness$life_satisfaction    <- happiness$GeneralLifeSatisfaction
+names(happiness)
+```
+
+```{r}
+happiness$neighborhood_quality <- happiness$NbrHoodSatisfaction
+happiness$length_residence     <- happiness$YearsResidence
+reg_data <- subset(
+  happiness,
+  !is.na(overall_happiness) &
+  !is.na(neighborhood_quality) &
+  !is.na(length_residence)
+)
+nrow(reg_data)
+summary(reg_data[, c("overall_happiness",
+                      "neighborhood_quality",
+                      "length_residence")])
+```
+
+```{r}
+model1 <- lm(overall_happiness ~ neighborhood_quality + length_residence,
+             data = reg_data)
+
+summary(model1)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+plot(model1)
+par(mfrow = c(1, 1))
+```
+
+#### Analysis 2: (Logistic Regression-Classification)
+
+```{r}
+happiness$high_life_satisfaction <- ifelse(happiness$life_satisfaction >= 8, 1, 0)
+table(happiness$high_life_satisfaction)
+```
+
+```{r}
+logit_data <- subset(
+  happiness,
+  !is.na(high_life_satisfaction) &
+  !is.na(SafeWalkingatNight) &
+  !is.na(neighborhood_quality)
+)
+
+nrow(logit_data)
+
+summary(logit_data[, c("high_life_satisfaction",
+                        "SafeWalkingatNight",
+                        "neighborhood_quality")])
+```
+
+```{r}
+model2 <- glm(high_life_satisfaction ~ SafeWalkingatNight + neighborhood_quality,
+              data = logit_data,
+              family = binomial)
+
+summary(model2)
+```
+
+```{r}
+logit_data$predicted_prob <- predict(model2, type = "response")
+logit_data$predicted_class <- ifelse(logit_data$predicted_prob >= 0.5, 1, 0)
+
+conf_matrix <- table(
+  Actual = logit_data$high_life_satisfaction,
+  Predicted = logit_data$predicted_class
+)
+conf_matrix
+conf_matrix_df <- as.data.frame(conf_matrix)
+
+library(ggplot2)
+
+ggplot(conf_matrix_df, aes(x = Predicted, y = Actual, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white", size = 5) +
+  labs(title = "Confusion Matrix Heatmap",
+       x = "Predicted Class",
+       y = "Actual Class") +
+  theme_minimal()
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+accuracy
+```
+
+```{r}
+library(pROC)
+
+roc_obj <- roc(logit_data$high_life_satisfaction,
+               logit_data$predicted_prob)
+
+plot(roc_obj)
+auc(roc_obj)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
