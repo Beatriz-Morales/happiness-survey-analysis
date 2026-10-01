@@ -1,0 +1,83 @@
+---
+title: "Community Happiness & Life Satisfaction Analysis"
+output: html_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(pROC)
+
+happiness <- read.csv("data/happinessSurvey.csv", stringsAsFactors=TRUE)
+happiness$overall_happiness <- happiness$HappyNow
+happiness$life_satisfaction <- happiness$GeneralLifeSatisfaction
+happiness$neighborhood_quality <- happiness$NbrHoodSatisfaction
+happiness$length_residence <- happiness$YearsResidence
+```
+
+## Multiple linear regression
+```{r}
+reg_data <- subset(
+  happiness,
+  !is.na(overall_happiness) &
+  !is.na(neighborhood_quality) &
+  !is.na(length_residence)
+)
+
+model1 <- lm(
+  overall_happiness ~ neighborhood_quality + length_residence,
+  data=reg_data
+)
+summary(model1)
+par(mfrow=c(2,2)); plot(model1); par(mfrow=c(1,1))
+```
+
+## Logistic classification
+The original coursework defined high life satisfaction as a score of 8 or higher.
+
+```{r}
+happiness$high_life_satisfaction <- ifelse(happiness$life_satisfaction >= 8, 1, 0)
+logit_data <- subset(
+  happiness,
+  !is.na(high_life_satisfaction) &
+  !is.na(SafeWalkingatNight) &
+  !is.na(neighborhood_quality)
+)
+
+set.seed(1234)
+idx <- sample(seq_len(nrow(logit_data)), floor(0.70*nrow(logit_data)))
+train <- logit_data[idx, ]
+test  <- logit_data[-idx, ]
+
+model2 <- glm(
+  high_life_satisfaction ~ SafeWalkingatNight + neighborhood_quality,
+  data=train, family=binomial
+)
+summary(model2)
+```
+
+## Held-out evaluation
+```{r}
+test$predicted_prob <- predict(model2, newdata=test, type="response")
+test$predicted_class <- ifelse(test$predicted_prob >= 0.5, 1, 0)
+
+cm <- table(Actual=test$high_life_satisfaction, Predicted=test$predicted_class)
+cm
+
+tn <- cm["0","0"]; fp <- cm["0","1"]
+fn <- cm["1","0"]; tp <- cm["1","1"]
+
+metrics <- data.frame(
+  Accuracy=(tp+tn)/sum(cm),
+  Recall=tp/(tp+fn),
+  Specificity=tn/(tn+fp),
+  Precision=tp/(tp+fp)
+)
+metrics
+
+roc_obj <- roc(test$high_life_satisfaction, test$predicted_prob, quiet=TRUE)
+auc(roc_obj)
+plot(roc_obj)
+```
+
+## Interpretation
+Held-out evaluation is preferable to reporting classification performance on the same observations used to fit the model. AUC summarizes ranking ability across thresholds, while threshold-specific metrics show the consequences of the selected classification cutoff.
